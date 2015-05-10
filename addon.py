@@ -39,15 +39,15 @@ def showcatalog():
                                    catalog[0])),
     } for catalog in catalogs]
     menus.insert(0, {'label': '【搜索视频】选择', 'path': plugin.url_for(
-        'searchvideo', url='http://www.soku.com/search_video/q_')})
+        'searchvideo', url='http://www.soku.com/search_video/q_',pagego='page')})
     menus.append({'label': '手动清除缓存【缓存24小时自动失效】',
                   'path': plugin.url_for('clscache')})
     epcache[url] = menus
     return menus
 
 
-@plugin.route('/searchvideo/<url>')
-def searchvideo(url):
+@plugin.route('/searchvideo/<url>/<pagego>')
+def searchvideo(url,pagego='page'):
     """
     search video
     """
@@ -58,76 +58,109 @@ def searchvideo(url):
               ('http://www.letv.com', 'letv'),
               ('http://v.pps.tv', 'pps'),
               ('http://www.tudou.com', 'tudou')]
-    kb = Keyboard('', u'请输入搜索关键字')
-    kb.doModal()
-    if not kb.isConfirmed():
-        return
-    sstr = kb.getText()
-    if not sstr:
-        return
-    url = url + urllib2.quote(sstr)
+    if pagego=='page':
+        kb = Keyboard('', u'请输入搜索关键字')
+        kb.doModal()
+        if not kb.isConfirmed():
+            return
+        sstr = kb.getText()
+        if not sstr:
+            return
+        url = url + urllib2.quote(sstr)
     result = _http(url)
     movstr = re.findall(
         r'<div class="item">(.*?)<!--item end-->', result, re.S)
 
-    if not movstr:
+    menus = []
+    if movstr:
         vitempat = re.compile(
-            r'lass="v-thumb".*?img alt="(.*?)" src="(.*?)".*?href="(.*?)"',
-            re.S)
-        movs = re.findall(vitempat, result)
-        menus = [{
-            'label': m[0],
-            'path': plugin.url_for('playmovie', url=m[2]),
-            'thumbnail': m[1]
-        } for m in movs]
-        return menus
-
-    vitempat = re.compile(
         r'{0}{1}'.format('p_link">.*?title="(.*?)".*?p_thumb.*?src="(.*?)"',
                          '.*?status="(.*?)"'), re.S)
-    menus = []
-    site = None
-    for movitem in movstr:
-        if 'p_ispaid' in movitem or 'nosource' in movitem:
-            continue
-        psrc = re.compile(r'pgm-source(.*?)</div>', re.S).search(movitem)
-        if not psrc:
-            continue
-        for k in source:
-            if k[0] in psrc.group(1):
-                site = k
-                break
-        if not site:
-            continue
-        vitem = vitempat.search(movitem)
+        site = None
+        for movitem in movstr:
+            if 'p_ispaid' in movitem or 'nosource' in movitem:
+                continue
+            psrc = re.compile(r'pgm-source(.*?)</div>', re.S).search(movitem)
+            if not psrc:
+                continue
+            for k in source:
+                if k[0] in psrc.group(1):
+                    site = k
+                    break
+            if not site:
+                continue
+            vitem = vitempat.search(movitem)
 
-        if 'class="movie"' in movitem:
-            eps = re.search(r'(%s.*?html)' % site[0], movitem, re.S).group(1)
-            menus.append({
+            if 'class="movie"' in movitem:
+                eps = re.search(r'(%s.*?html)' % site[0], movitem, re.S).group(1)
+                menus.append({
                 'label': '%s【%s】(%s)' % (
                     vitem.group(1), vitem.group(3), site[1]),
                 'path': plugin.url_for('playsearch', url=eps, source=site[1]),
                 'thumbnail': vitem.group(2), })
 
-        if 'class="tv"' in movitem or 'class="zy"' in movitem:
-            if 'class="tv"' in movitem:
-                epss = re.findall(
+            if 'class="tv"' in movitem or 'class="zy"' in movitem:
+                if 'class="tv"' in movitem:
+                    epss = re.findall(
                     r'(%s.*?html).*?>([\w ."]+?)</a>' % site[0], movitem, re.S)
-            else:
-                epss = re.findall(
+                else:
+                    epss = re.findall(
                     r'{0}{1}{2}'.format(
                         '"(?:(?:date)|(?:phases))">([\d-]+)</span>\s+<a[\S ]+(',
                         site[0], '.*?html).*?>([^>]+?)<(?:(?:em)|(?:/a))(?s)'),
                     movitem)
-                epss = [(i[1], '[%s]%s' % (i[0], i[2])) for i in epss]
+                    epss = [(i[1], '[%s]%s' % (i[0], i[2])) for i in epss]
             # epss = reversed([(k, v) for k,v in OrderedDict(reversed(epss)).
             #                 iteritems() if '查看全部' not in v])
-            epss = [(v[0], site[1], v[1]) for v in epss]
-            menus.append({
+                epss = [(v[0], site[1], v[1]) for v in epss]
+                menus.append({
                 'label': '%s【%s】(%s)' % (
                     vitem.group(1), vitem.group(3), site[1]),
                 'path': plugin.url_for('showsearch', url=str(epss)),
                 'thumbnail': vitem.group(2), })
+
+    if len(menus)>0:
+        menus.append({'label': '[COLOR FFFF0000]以上为节目[/COLOR],【搜索视频】选择', 'path': plugin.url_for('searchvideo', url='http://www.soku.com/search_video/q_',pagego='page')})
+    
+    vitempat = re.compile(
+            r'lass="v-thumb".*?img alt="(.*?)" src="(.*?)".*?href="(.*?)"',
+            re.S)
+    movs = re.findall(vitempat, result)
+
+    for m in movs:
+        site=None
+        for k in source:
+            if k[0] in m[2]:
+                site = k
+                break
+        if not site:
+            continue
+        menus.append({
+            'label': m[0],
+            'path': plugin.url_for('playsearch', url=m[2],source=site[1]),
+            'thumbnail': m[1]
+            }) 
+    
+    # add pre/next item
+    pagestr = re.search(r'class="sk_pager">(.*?)</ul>',
+                        result, re.S)
+    if pagestr:
+        pre = re.findall(r'class="prev"><a href="(.*?)" title=\'(.*?)\'',
+                         pagestr.group(1))
+        if pre:
+            menus.append({
+                'label': pre[0][1],
+                'path': plugin.url_for('searchvideo', url='http://www.youku.com{0}'.format(pre[0][0]),pagego='pagego')
+                }) 
+
+        nex = re.findall(r'class="next"><a href="(.*?)" title=\'(.*?)\'',
+                     pagestr.group(1))
+        if nex:
+            menus.append({
+                'label': nex[0][1],
+                'path': plugin.url_for('searchvideo', url='http://www.youku.com{0}'.format(nex[0][0]),pagego='pagego')
+                }) 
+
     return menus
 
 
@@ -354,7 +387,8 @@ class PlayUtil(object):
         stypes = OrderedDict((('1080P', 'hd3'), ('超清', 'hd2'),
                               ('高清', 'mp4'), ('标清', 'flv')))
         # get movie metadata (json format)
-        vid = self.url[-18:-5]
+        vid = re.search(r'.*?/id_(.*?)\.html.*?',self.url,re.S).group(1)
+	print vid
         moviesurl = ('http://v.youku.com/player/getPlayList/VideoIDS/{0}'
                      '/Pf/4/ctype/12/ev/1').format(vid)
         result = _http(moviesurl)
